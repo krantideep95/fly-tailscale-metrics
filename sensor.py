@@ -7,37 +7,42 @@ import urequests
 import machine
 import gc
 
-ssid = "" # FIXME: wifi ssid goes here
-password = "" # FIXME: wifi password
+def connect_to_wifi(ssid, password):
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(ssid, password)
+
+    max_wait = 10
+    while max_wait > 0 and not wlan.isconnected():
+        time.sleep(1)
+        max_wait -= 1
+
+    if not wlan.isconnected():
+        raise RuntimeError('Failed to connect to WiFi')
+    else:
+        print('Connected to WiFi')
+        return wlan.ifconfig()[0]
+
+def read_sensor_data():
+    if breakout_scd41.ready():
+        return breakout_scd41.measure()
+    return None, None, None
+
+def post_data(url, headers, data):
+    try:
+        resp = urequests.post(url, headers=headers, data=data)
+    except Exception as e:
+        print(f'Error: {e}')
+    finally:
+        if resp:
+            resp.close()
+
+# FIXME: Replace with your actual SSID and Password
+ssid = "your_wifi_ssid"
+password = "your_wifi_password"
 
 led = machine.Pin("LED", machine.Pin.OUT)
-
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-try:
-    wlan.connect(ssid, password)
-except OSError as error:
-    print(f'error is {error}')
-
-
-max_wait = 10
-while max_wait > 0:
-    if wlan.status() < 0 or wlan.status() >= 3:
-        break
-    max_wait -= 1
-    print('waiting for connection...')
-    time.sleep(1)
-
-if wlan.status() != 3:
-    raise RuntimeError('network connection failed')
-else:
-    print('connected')
-    status = wlan.ifconfig()
-    print( 'ip = ' + status[0] )
-
-
-i2c = PimoroniI2C(**BREAKOUT_GARDEN_I2C_PINS)  # or PICO_EXPLORER_I2C_PINS or HEADER_I2C_PINS
-
+i2c = PimoroniI2C(**BREAKOUT_GARDEN_I2C_PINS)
 breakout_scd41.init(i2c)
 breakout_scd41.start()
 
@@ -45,18 +50,8 @@ headers = {'X-Requested-With': 'Python requests', 'Content-type': 'text/xml'}
 url = "http://raspberrypi.local:9091/metrics/job/sensor_metrics"
 
 while True:
-    if breakout_scd41.ready():
-        gc.collect()
-        led.on()
-        co2, temperature, humidity = breakout_scd41.measure()
-        data = "co2 " +str(co2) + "\n temperature " + str(temperature) + "\n humidity " + str(humidity) +"\n"
-
-        led.off()
-        try:
-          resp = urequests.post(url, headers=headers, data=data)
-          value = resp.json()
-        except Exception as e: # Here it catches any error.
-          if isinstance(e, OSError) and resp: # If the error is an OSError the socket has to be closed.
-            resp.close()
-          print(f'error is {e}')
-        time.sleep(5.0)
+    co2, temperature, humidity = read_sensor_data()
+    if co2 is not None:
+        data = f"co2 {co2}\n temperature {temperature}\n humidity {humidity}\n"
+        post_data(url, headers, data)
+    time.sleep(5.0)
