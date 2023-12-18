@@ -50,8 +50,10 @@ headers = {'X-Requested-With': 'Python requests', 'Content-type': 'text/xml'}
 url = "http://raspberrypi.local:9091/metrics/job/sensor_metrics"
 
 while True:
+    led.on()  # Turn on the LED to indicate data reading
     co2, temperature, humidity = read_sensor_data()
     if co2 is not None:
         data = f"co2 {co2}\n temperature {temperature}\n humidity {humidity}\n"
         post_data(url, headers, data)
+    led.off()  # Turn off the LED after data posting
     time.sleep(5.0)
